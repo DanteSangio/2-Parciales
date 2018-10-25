@@ -18,7 +18,7 @@
 SemaphoreHandle_t Semaforo_1;
 SemaphoreHandle_t Semaforo_2;
 
-QueueHandle_t	  ColaADC;
+QueueHandle_t	  ColaADCPre,ColaADCTemp;
 
 #include <cr_section_macros.h>
 
@@ -30,6 +30,9 @@ QueueHandle_t	  ColaADC;
 
 #define OUTPUT		((uint8_t) 1)
 #define INPUT		((uint8_t) 0)
+
+#define SEN_TEMP	ADC_CH5
+#define SEN_PRE		ADC_CH4
 
 
 //Placa Infotronic
@@ -48,9 +51,9 @@ QueueHandle_t	  ColaADC;
 #define	RGBG		PORT(2),PIN(2)
 #define	RGBR		PORT(2),PIN(3)
 
-#define LIMITE_A	0
-#define LIMITE_B	1300
-#define LIMITE_C	2600
+#define LIMITE_INF_PRE	512 	//0.4125V es 69BAR que son 512 cuentas
+#define LIMITE_SUP_PRE	1300	//2.8875V es 75BAR que son 3584 cuentas
+#define LIMITE_SUP_TEMP	1300	//3.09375V es 65°C que son 3840 cuentas
 
 static ADC_CLOCK_SETUP_T ADCSetup;
 
@@ -86,27 +89,47 @@ static void xTask2(void *pvParameters)
 
 void ADC_IRQHandler(void)
 {
-	uint16_t dataADC;
+	uint16_t dataADC,contPre=0,contTemp=0;
 	BaseType_t testigo = pdFALSE;
 
-	if(Chip_ADC_ReadValue(LPC_ADC, ADC_CH5, &dataADC))//si da 1 significa que la conversión estaba realizada
+	if(Chip_ADC_ReadValue(LPC_ADC, SEN_TEMP, &dataADC))//si da 1 significa que la conversión estaba realizada
 	{
-		xQueueSendToBackFromISR(ColaADC, &dataADC, &testigo);
-		portYIELD_FROM_ISR(testigo);
+		contPre++;
+		if(contPre==2500)//muestreando a 10KHZ cada canal solo me quiero quedar con 4 muestras x seg
+		{
+			contPre=0;
+			xQueueSendToBackFromISR(ColaADCTemp, &dataADC, &testigo);
+			portYIELD_FROM_ISR(testigo);
+		}
+	}
+
+	if(Chip_ADC_ReadValue(LPC_ADC, SEN_PRE, &dataADC))//si da 1 significa que la conversión estaba realizada
+	{
+		contPre++;
+		if(contPre==2500)//muestreando a 10KHZ cada canal solo me quiero quedar con 4 muestras x seg
+		{
+			contPre=0;
+			xQueueSendToBackFromISR(ColaADCPre, &dataADC, &testigo);
+			portYIELD_FROM_ISR(testigo);
+		}
 	}
 
 }
 
 static void ADC_Config(void *pvParameters)
 {
-	Chip_IOCON_PinMux(LPC_IOCON, 1, 31, IOCON_MODE_INACT, IOCON_FUNC3); // Entrada analogica 0 (Infotronik)
+	Chip_IOCON_PinMux(LPC_IOCON, 1, 31, IOCON_MODE_INACT, IOCON_FUNC3); // Entrada analogica 0 (Infotronik) ch5
+	Chip_IOCON_PinMux(LPC_IOCON, 1, 30, IOCON_MODE_INACT, IOCON_FUNC3); // Entrada analogica 0 (Infotronik) ch5
 
 	//Chip_ADC_ReadStatus(_LPC_ADC_ID, _ADC_CHANNLE, ADC_DR_DONE_STAT)
 
 	Chip_ADC_Init(LPC_ADC, &ADCSetup);
-	Chip_ADC_EnableChannel(LPC_ADC, ADC_CH5, ENABLE);
-	Chip_ADC_SetSampleRate(LPC_ADC, &ADCSetup, 50000);
-	Chip_ADC_Int_SetChannelCmd(LPC_ADC, ADC_CH5, ENABLE);
+	Chip_ADC_EnableChannel(LPC_ADC, SEN_TEMP, ENABLE);
+	Chip_ADC_EnableChannel(LPC_ADC, SEN_PRE, ENABLE);
+
+	Chip_ADC_SetSampleRate(LPC_ADC, &ADCSetup, 20000);
+	Chip_ADC_Int_SetChannelCmd(LPC_ADC, SEN_TEMP, ENABLE);
+	Chip_ADC_Int_SetChannelCmd(LPC_ADC, SEN_PRE, ENABLE);
 	Chip_ADC_SetBurstCmd(LPC_ADC, DISABLE);
 
 	NVIC_ClearPendingIRQ(ADC_IRQn);
@@ -120,42 +143,39 @@ static void ADC_Config(void *pvParameters)
 
 static void taskAnalisis(void *pvParameters)
 {
-	uint16_t dato;
-
+	uint16_t datoTemp[4],datoPre[4],i=0;
+	void EMerPre[2]={0xAA,0xF1},EMerTemp[2]={0xAA,0xF5};
 	while(1)
 	{
-		xQueueReceive( ColaADC, &dato, portMAX_DELAY );
 
-		if ( dato >= LIMITE_A && dato <= LIMITE_B )
+		if(uxQueueMessagesWaiting(ColaADCPre) == 4)
 		{
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBG);
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBB);
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBR);
-
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, RGBG);
+			for(i=0;i<4;i++)
+			xQueueReceive( ColaADCPre, &datoPre[i], portMAX_DELAY );
+			totalPre = (datoPre[0]+datoPre[1]+datoPre[2]+datoPre[3])/4;
+			if(totalPre > LIMITE_SUP_PRE || totalPre < LIMITE_INF_PRE)
+			{
+				xSemaphoreGive(Semaforo_Valvula );
+				SendRS485(LPC_UART0,EMerPre,2);
+			}
 		}
-		else if ( dato > LIMITE_B && dato <= LIMITE_C )
+
+
+		if(uxQueueMessagesWaiting(ColaADCTemp) == 4)
 		{
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBG);
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBB);
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBR);
-
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, RGBG);
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, RGBR);
-
-		}
-		else
-		{
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBG);
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBB);
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBR);
-
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, RGBG);
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, RGBR);
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, RGBB);
+			for(i=0;i<4;i++)
+			xQueueReceive( ColaADCTemp, &datoTemp[i], portMAX_DELAY );
+			datoTemp = (datoTemp[0]+datoTemp[1]+datoTemp[2]+datoTemp[3])/4;
+			if(datoTemp > LIMITE_SUP_TEMP)
+			{
+				xSemaphoreGive(Semaforo_Valvula );
+				SendRS485(LPC_UART0,EMerTemp,2);
+			}
 		}
 
 		Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
+		vTaskDelay( 250 / portTICK_PERIOD_MS );//ESTO SIGNIFICA QUE CONVIERTO CADA 250ms?
+
 	}
 }
 
@@ -203,7 +223,9 @@ int main(void)
 	vSemaphoreCreateBinary(Semaforo_1);
 	vSemaphoreCreateBinary(Semaforo_2);
 
-	ColaADC = xQueueCreate (1, sizeof(uint16_t));
+	ColaADCPre = xQueueCreate (4, sizeof(uint16_t));
+	ColaADCTemp = xQueueCreate (4, sizeof(uint16_t));
+
 
 	xSemaphoreTake(Semaforo_1 , portMAX_DELAY );
 
