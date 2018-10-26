@@ -88,7 +88,7 @@ static void xValvula(void *pvParameters)
 
 void ADC_IRQHandler(void)
 {
-	uint16_t dataADC,contPre=0,contTemp=0;
+	uint16_t dataADC;
 	BaseType_t testigo = pdFALSE;
 
 	if(Chip_ADC_ReadValue(LPC_ADC, SEN_TEMP, &dataADC))//si da 1 significa que la conversión estaba realizada
@@ -136,8 +136,8 @@ static void ADC_Config(void *pvParameters)
 
 static void taskAnalisis(void *pvParameters)
 {
-	uint16_t datoTemp[4],datoPre[4],i=0;
-	void EMerPre[2]={0xAA,0xF1},EMerTemp[2]={0xAA,0xF5};
+	uint16_t datoTemp[4],datoPre[4],i=0,totalPre,totalTemp;
+	char EMerPre[2]={0xAA,0xF1},EMerTemp[2]={0xAA,0xF5};
 	while(1)
 	{
 
@@ -149,7 +149,7 @@ static void taskAnalisis(void *pvParameters)
 			if(totalPre > LIMITE_SUP_PRE || totalPre < LIMITE_INF_PRE)
 			{
 				xSemaphoreGive(Semaforo_Valvula );
-				SendRS485(LPC_UART0,EMerPre,2);
+				SendRS485(LPC_UART0,(void*)EMerPre,2);
 			}
 		}
 
@@ -159,12 +159,12 @@ static void taskAnalisis(void *pvParameters)
 			for(i=0;i<4;i++)
 			xQueueReceive( ColaADCTemp, &datoTemp[i], portMAX_DELAY );
 
-			datoTemp = (datoTemp[0]+datoTemp[1]+datoTemp[2]+datoTemp[3])/4;
+			totalTemp = (datoTemp[0]+datoTemp[1]+datoTemp[2]+datoTemp[3])/4;
 
-			if(datoTemp > LIMITE_SUP_TEMP)
+			if(totalTemp > LIMITE_SUP_TEMP)
 			{
 				xSemaphoreGive(Semaforo_Valvula );
-				SendRS485(LPC_UART0,EMerTemp,2);
+				SendRS485(LPC_UART0,(void*)EMerTemp,2);
 			}
 		}
 
@@ -179,7 +179,7 @@ static void taskAnalisis(void *pvParameters)
 static void vTaskPulsadores(void *pvParameters)
 {
 	uint32_t EstadoValvula = FALSE;
-	void EMerPre[2]={0xAA,0xFA};
+	char EMerPuls[2]={0xAA,0xFA};
 
 
 	while (1)
@@ -190,7 +190,7 @@ static void vTaskPulsadores(void *pvParameters)
 		if(!Chip_GPIO_GetPinState(LPC_GPIO, PUL_EMER) && EstadoValvula == FALSE)
 		{
 				xSemaphoreGive(Semaforo_Valvula );
-				SendRS485(LPC_UART0,EMerPuls,2);
+				SendRS485(LPC_UART0,(void*)EMerPuls,2);
 				EstadoValvula = TRUE;
 		}
 
