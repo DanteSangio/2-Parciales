@@ -15,7 +15,7 @@
 #include "semphr.h"
 #include "queue.h"
 
-SemaphoreHandle_t Semaforo_1;
+SemaphoreHandle_t Semaforo_Valvula;
 SemaphoreHandle_t Semaforo_2;
 
 QueueHandle_t	  ColaADCPre,ColaADCTemp;
@@ -51,41 +51,40 @@ QueueHandle_t	  ColaADCPre,ColaADCTemp;
 #define	RGBG		PORT(2),PIN(2)
 #define	RGBR		PORT(2),PIN(3)
 
+#define VALVULA		PORT(0),PIN(8)
+#define PUL_EMER	PORT(0),PIN(9)
+
 #define LIMITE_INF_PRE	512 	//0.4125V es 69BAR que son 512 cuentas
-#define LIMITE_SUP_PRE	1300	//2.8875V es 75BAR que son 3584 cuentas
-#define LIMITE_SUP_TEMP	1300	//3.09375V es 65°C que son 3840 cuentas
+#define LIMITE_SUP_PRE	3584	//2.8875V es 75BAR que son 3584 cuentas
+#define LIMITE_SUP_TEMP	3840	//3.09375V es 65°C que son 3840 cuentas
 
 static ADC_CLOCK_SETUP_T ADCSetup;
 
-/* LED1 toggle thread */
-static void vTask1(void *pvParameters)
+//*********************************************************************************************************************
+
+void SendRS485 (LPC_USART_T *pUART, const void *data, int numBytes)
+{
+
+}
+
+//*********************************************************************************************************************
+
+/* Apertura de valvula y deshabilito ADC */
+static void xValvula(void *pvParameters)
 {
 	while (1)
 	{
-		xSemaphoreTake(Semaforo_2 , portMAX_DELAY );
+		xSemaphoreTake(Semaforo_Valvula , portMAX_DELAY );
 
-		Chip_GPIO_SetPinOutHigh (LPC_GPIO , PORT(0) , PIN(22));
+		Chip_GPIO_SetPinOutHigh (LPC_GPIO , VALVULA);
 
-		vTaskDelay( 500 / portTICK_PERIOD_MS );
+		NVIC_DisableIRQ(ADC_IRQn);
 
-		xSemaphoreGive(Semaforo_1 );
+		NVIC_ClearPendingIRQ(ADC_IRQn);
 	}
 }
 
-/* LED1 toggle thread */
-static void xTask2(void *pvParameters)
-{
-	while (1)
-	{
-		xSemaphoreTake(Semaforo_1 , portMAX_DELAY );
-
-		Chip_GPIO_SetPinOutLow (LPC_GPIO , PORT(0) , PIN(22));
-
-		vTaskDelay( 500 / portTICK_PERIOD_MS );
-
-		xSemaphoreGive(Semaforo_2 );
-	}
-}
+//*********************************************************************************************************************
 
 void ADC_IRQHandler(void)
 {
@@ -94,27 +93,19 @@ void ADC_IRQHandler(void)
 
 	if(Chip_ADC_ReadValue(LPC_ADC, SEN_TEMP, &dataADC))//si da 1 significa que la conversión estaba realizada
 	{
-		contPre++;
-		if(contPre==2500)//muestreando a 10KHZ cada canal solo me quiero quedar con 4 muestras x seg
-		{
-			contPre=0;
-			xQueueSendToBackFromISR(ColaADCTemp, &dataADC, &testigo);
-			portYIELD_FROM_ISR(testigo);
-		}
+		xQueueSendToBackFromISR(ColaADCTemp, &dataADC, &testigo);
+		portYIELD_FROM_ISR(testigo);
 	}
 
 	if(Chip_ADC_ReadValue(LPC_ADC, SEN_PRE, &dataADC))//si da 1 significa que la conversión estaba realizada
 	{
-		contPre++;
-		if(contPre==2500)//muestreando a 10KHZ cada canal solo me quiero quedar con 4 muestras x seg
-		{
-			contPre=0;
-			xQueueSendToBackFromISR(ColaADCPre, &dataADC, &testigo);
-			portYIELD_FROM_ISR(testigo);
-		}
+		xQueueSendToBackFromISR(ColaADCPre, &dataADC, &testigo);
+		portYIELD_FROM_ISR(testigo);
 	}
 
 }
+
+//*********************************************************************************************************************
 
 static void ADC_Config(void *pvParameters)
 {
@@ -141,6 +132,8 @@ static void ADC_Config(void *pvParameters)
 
 }
 
+//*********************************************************************************************************************
+
 static void taskAnalisis(void *pvParameters)
 {
 	uint16_t datoTemp[4],datoPre[4],i=0;
@@ -165,7 +158,9 @@ static void taskAnalisis(void *pvParameters)
 		{
 			for(i=0;i<4;i++)
 			xQueueReceive( ColaADCTemp, &datoTemp[i], portMAX_DELAY );
+
 			datoTemp = (datoTemp[0]+datoTemp[1]+datoTemp[2]+datoTemp[3])/4;
+
 			if(datoTemp > LIMITE_SUP_TEMP)
 			{
 				xSemaphoreGive(Semaforo_Valvula );
@@ -179,6 +174,37 @@ static void taskAnalisis(void *pvParameters)
 	}
 }
 
+//*********************************************************************************************************************
+/* ENTRADAS */
+static void vTaskPulsadores(void *pvParameters)
+{
+	uint32_t EstadoValvula = FALSE;
+	void EMerPre[2]={0xAA,0xFA};
+
+
+	while (1)
+	{
+		vTaskDelay( 50 / portTICK_PERIOD_MS );//Muestreo cada 50 mseg
+
+		//Control de stop
+		if(!Chip_GPIO_GetPinState(LPC_GPIO, PUL_EMER) && EstadoValvula == FALSE)
+		{
+				xSemaphoreGive(Semaforo_Valvula );
+				SendRS485(LPC_UART0,EMerPuls,2);
+				EstadoValvula = TRUE;
+		}
+
+		if(Chip_GPIO_GetPinState(LPC_GPIO, PUL_EMER) && EstadoValvula == TRUE)//significa que volvio a la normalidad
+		{
+			Chip_GPIO_SetPinOutLow (LPC_GPIO , VALVULA);
+			NVIC_ClearPendingIRQ(ADC_IRQn);
+			NVIC_EnableIRQ(ADC_IRQn);
+			Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
+			EstadoValvula = FALSE;
+		}
+	}
+}
+//*********************************************************************************************************************
 void uC_StartUp (void)
 {
 	Chip_GPIO_Init (LPC_GPIO);
@@ -203,6 +229,12 @@ void uC_StartUp (void)
 	Chip_GPIO_SetDir (LPC_GPIO, SW1, INPUT);
 	Chip_IOCON_PinMux (LPC_IOCON, SW1, IOCON_MODE_PULLDOWN, IOCON_FUNC0);
 
+	Chip_GPIO_SetDir (LPC_GPIO, PUL_EMER, INPUT);
+	Chip_IOCON_PinMux (LPC_IOCON, PUL_EMER, IOCON_MODE_PULLDOWN, IOCON_FUNC0);
+	Chip_GPIO_SetDir (LPC_GPIO, VALVULA, OUTPUT);
+	Chip_IOCON_PinMux (LPC_IOCON, VALVULA, IOCON_MODE_PULLDOWN, IOCON_FUNC0);
+
+
 	//Salidas apagadas
 	Chip_GPIO_SetPinOutLow(LPC_GPIO, LED_STICK);
 	Chip_GPIO_SetPinOutHigh(LPC_GPIO, BUZZER);
@@ -220,31 +252,31 @@ int main(void)
 	uC_StartUp ();
 	SystemCoreClockUpdate();
 
-	vSemaphoreCreateBinary(Semaforo_1);
+	vSemaphoreCreateBinary(Semaforo_Valvula);
 	vSemaphoreCreateBinary(Semaforo_2);
 
 	ColaADCPre = xQueueCreate (4, sizeof(uint16_t));
 	ColaADCTemp = xQueueCreate (4, sizeof(uint16_t));
 
 
-	xSemaphoreTake(Semaforo_1 , portMAX_DELAY );
+	xSemaphoreTake(Semaforo_Valvula , portMAX_DELAY );
 
 	xTaskCreate(taskAnalisis, (char *) "taskAnalisis",
 					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
 					(xTaskHandle *) NULL);
 
 	xTaskCreate(ADC_Config, (char *) "ADC_Config",
-					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
+					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 3UL),
 					(xTaskHandle *) NULL);
-/*
-	xTaskCreate(vTask1, (char *) "vTaskLed1",
-				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+
+	xTaskCreate(vTaskPulsadores, (char *) "vTaskPulsadores",
+				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
 				(xTaskHandle *) NULL);
 
-	xTaskCreate(xTask2, (char *) "vTaskLed2",
-				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	xTaskCreate(xValvula, (char *) "xValvula",
+				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
 				(xTaskHandle *) NULL);
-*/
+
 	/* Start the scheduler */
 	vTaskStartScheduler();
 
