@@ -29,10 +29,10 @@
  * this code.
  */
 
-#include "FreeRTOS.h"
-#include "task.h"
 #include "FreeRTOSCommonHooks.h"
 
+#include "FreeRTOS.h"
+#include "task.h"
 #include "chip.h"
 
 /*****************************************************************************

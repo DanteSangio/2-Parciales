@@ -107,18 +107,17 @@ void SendRS485 (LPC_USART_T *pUART, const void *data, int numBytes)
 
 //*********************************************************************************************************************
 
-/* Apertura de valvula y deshabilito ADC */
-static void xValvula(void *pvParameters)
+static void xValvula(void *pvParameters)	//Se debe abrir la valvula y deshabilitar el ADC
 {
 	while (1)
 	{
 		xSemaphoreTake(Semaforo_Valvula , portMAX_DELAY);
 
-		Chip_GPIO_SetPinOutHigh (LPC_GPIO , VALVULA);
+		Chip_GPIO_SetPinOutHigh (LPC_GPIO , VALVULA);	//Abro la valvula
 
-		NVIC_DisableIRQ(ADC_IRQn);
+		NVIC_DisableIRQ(ADC_IRQn);		//Deshabilito la interrupcion del ADC
 
-		NVIC_ClearPendingIRQ(ADC_IRQn);
+		NVIC_ClearPendingIRQ(ADC_IRQn);	//Elimino los bits que quedan pendientes en la interrupcion
 	}
 }
 
