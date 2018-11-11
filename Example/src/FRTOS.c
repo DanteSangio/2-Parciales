@@ -76,6 +76,9 @@ static void xValvula(void *pvParameters)	//Se debe abrir la valvula y deshabilit
 		NVIC_DisableIRQ(ADC_IRQn);		//Deshabilito la interrupcion del ADC
 
 		NVIC_ClearPendingIRQ(ADC_IRQn);	//Elimino los bits que quedan pendientes en la interrupcion
+
+		Chip_ADC_DeInit(LPC_ADC);//deshabilito el ADC
+
 	}
 }
 
@@ -191,6 +194,7 @@ static void vTaskPulsadores(void *pvParameters)
 		if(Chip_GPIO_GetPinState(LPC_GPIO, PUL_EMER) && EstadoValvula == TRUE)//significa que volvio a la normalidad
 		{
 			Chip_GPIO_SetPinOutLow (LPC_GPIO , VALVULA);
+			Chip_ADC_Init(LPC_ADC, &ADCSetup);//Vuelvo a habilitar el ADC
 			NVIC_ClearPendingIRQ(ADC_IRQn);
 			NVIC_EnableIRQ(ADC_IRQn);
 			Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
