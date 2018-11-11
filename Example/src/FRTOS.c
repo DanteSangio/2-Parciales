@@ -169,7 +169,7 @@ static void taskAnalisis(void *pvParameters)
 		}
 
 		Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
-		vTaskDelay( 250 / portTICK_PERIOD_MS );//ESTO SIGNIFICA QUE CONVIERTO CADA 250ms?
+		vTaskDelay( 250 / portTICK_PERIOD_MS );//ESTO SIGNIFICA QUE CONVIERTO CADA 250ms
 
 	}
 }
