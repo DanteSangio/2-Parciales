@@ -174,7 +174,6 @@ static void taskAnalisis(void *pvParameters)
 	while(1)
 	{
 
-		Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
 		//me aseguro que los datos ya esten en las colas
 		xQueueReceive( ColaADCZona1, &datoTemp[0], portMAX_DELAY );
 		xQueueReceive( ColaADCZona2, &datoTemp[1], portMAX_DELAY );
@@ -225,9 +224,13 @@ static void taskAnalisis(void *pvParameters)
 				Chip_GPIO_SetPinOutLow (LPC_GPIO , AIRE4); //apagar todos los aires
 				NVIC_ClearPendingIRQ(ADC_IRQn);
 				NVIC_DisableIRQ(ADC_IRQn);
+				Chip_ADC_DeInit(LPC_ADC);
 			    Chip_I2C_MasterSend (I2C1, SLAVE_ADDRESS, Datos_Tx,3); //Selecciono el lugar y escribo el dato.
 			}
 		}
+
+		Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
+		vTaskDelay( 950 / portTICK_PERIOD_MS );//Delay de 950 mseg
 	}
 }
 
