@@ -1,39 +1,3 @@
-/*
-TECNICAS DIGITALES II - 2do PARCIAL TEMA 84 - Parte practica:
-
-El sistema estará encargado de monitorear una vez por segundo a 04 (cuatro) sensores de temperatura, ubicados en
-distintos puntos de una cámara frigorífica, y, en función de los valores medidos, se encargará del accionamiento de 04
-(cuatro) equipos de acondicionamiento de temperatura.
-Siendo que los sensores se encontrarán en áreas susceptibles a inducciones de ruido, se utilizarán lazos 4-20 mA para
-interconectarlos con la placa central.
-Las especificaciones técnicas de los sensores son:
-			Temperatura[°C] 	Corriente
-			-40°C 				04 mA
-			 10°C 				20 mA
-Se solicita:
-a) Desarrollar toda la electrónica necesaria, incluido el amplificador de transresistencia para convertir los 4-20mA
-a 1 - 2,5 Volts de forma que pueda ser leído por el conversor ADC del microcontrolador. Realice el/los diagrama/s
-esquemático/s correspondiente/s.
-b) Deberá desarrollar el sistema de control del tipo ON/OFF de la cámara frigorífica. La variable a controlar será la
-Temperatura. Para garantizar el correcto mantenimiento de los alimentos, la temperatura deberá encontrarse en todo
-momento entre -25°C y -10°C en los 04 sectores monitoreados de la cámara. Para esto, deberá:
-• Si Tx < -25°C, apague acondicionador de temperatura correspondiente (Acx)
-• Si Tx > -10°C, encienda acondicionador de temperatura correspondiente (Acx)
-c) Si en algún momento, la temperatura supera los -5 °C en cualquiera de los 04 (cuatro) sensores de
-temperatura, el sistema deberá accionar una alarma sonora de 220V por 30 segundos.
-d) Si en algún momento, la temperatura supera los 0 °C en cualquiera de los 04 (cuatro) sensores de temperatura.
-El sistema deberá guardar en la posición 0x10 de una memoria EEPROM externa (conectada al módulo I2C1 bajo
-direccionamiento físico 0x00) el valor 0xAA y apagar el sistema siendo que los alimentos deberán ser descartados. Este
-parámetro será auditado ante algún control bromatológico.
-Reglas de diseño:
-• Se encuentra prohibida la utilización de variables globales.
-• El sistema deberá ser desarrollado íntegramente bajo FreeRTOS utilizando los mecanismos de sincronización
-provistos por el sistema operativo.
-• Las temporizaciones deberán generarse con los Timers provistos por el microcontrolador.
-• El acceso al hardware deberá ser desarrollado utilizando LPCOpen.
-*/
-
-
 //*********************************************************************************************************************
 //INCLUDES
 //*********************************************************************************************************************
