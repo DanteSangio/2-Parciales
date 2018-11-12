@@ -1,0 +1,34 @@
+Una empresa desea desarrollar un nuevo prototipo para la producción de una heladera. Para tales fines, nos
+solicitan que desarrollemos la electrónica asociada.
+La heladera, tendrá en su interior los siguientes elementos:
+- Sensor analógico de temperatura con rango de trabajo de -20°C a 50°C. Escala: 20mV/°C. Tensión de
+salida a -20°C: 0V.
+- Interruptor de puerta abierta. Contacto N.C. (Al cerrar la puerta pasa a Contacto Abierto).
+- LED de iluminación
+- Ventilador interno.
+- Motor-compresor de refrigeración.
+Se deberá realizar la aplicación utilizando un LPC1769 (Cortex M3) corriente bajo FreeRTOS siguiendo los siguientes
+lineamientos:
+a) Se debe mantener una temperatura constante de entre 1°C a 5°C. Para tal fin se empleará un controlador
+del tipo ON/OFF. Cuando la temperatura supere los 5°C, deberá encenderse el Motor. Cuando se
+encuentre por debajo de 1°C deberá apagarse.
+b) Conjunto al motor, deberá accionarse en forma solidaria el ventilador interno a efectos de mejorar la
+eficiencia energética del sistema.
+c) Siempre que se abra la puerta deberá encenderse el led de iluminación y, en caso de encontrarse
+encendido, apagar el ventilador interno (no el motor).
+Para mejorar la linealidad del sistema, debemos generar la etapa de acondicionamiento del sensor de temperatura para
+lograr el siguiente rango dinámico (aproximarlo lo mejor posible):
+- -5°C -> Tensión de entrada al uC: 0V
+- 10°C -> Tensión de entrada al uC: 3,3V.
+Se tendrá un pulsador con retención colocado sobre el exterior de la heladera, que permitirá encender o apagar al
+conjunto.
+A efectos de mejorar el servicio de posventa, el cliente nos solicita que nuestro sistema lleve una estadística de la
+cantidad de veces que se abrió la puerta de la heladera. Este valor deberá ser tratado como un dato de 32bits, y
+guardado en una memoria I2C externa, presente en nuestra placa. Al encenderse la heladera, nuestro programa deberá
+leer ese dato de la memoria. Cuando se desee apagarla, deberemos realizar el back up de la variable nuevamente en
+la memoria, de forma de garantizar no perder el dato. No obstante ello, cada 5 minutos (contados con uno de los
+TIMERS de nuestro microcontrolador) deberá guardarse este dato en la memoria.
+Se solicita:
+a) Diagrama esquemático completo del sistema incluyendo sensores, transductores, drivers y memoria.
+b) Desarrollar la aplicación bajo FreeRTOS teniendo en consideración las salvedades realizadas. Utilice los
+módulos del microcontrolador que crea convenientes.
