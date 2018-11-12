@@ -53,6 +53,7 @@
 #define PUERTA		PORT(1),PIN(26)
 #define	MOTOR		PORT(2),PIN(0)
 #define	VENTILADOR	PORT(0),PIN(23)
+#define	LED			PORT(0),PIN(28)
 
 
 /*
@@ -210,7 +211,7 @@ static void vTaskPulsadores(void *pvParameters)
 
 	while(1)
 	{
-		//PUERTA
+		//Puerta
 		if(Chip_GPIO_GetPinState(LPC_GPIO, PUERTA)==ON)			//Si se abrio la puerta (contacto cerrado)
 		{
 			Chip_GPIO_SetPinOutHigh(LPC_GPIO, LED);				//Enciendo led de iluminacion
@@ -226,7 +227,7 @@ static void vTaskPulsadores(void *pvParameters)
 			vTaskDelay(1000/portTICK_RATE_MS);					//Delay 1 seg
 		}
 
-		//PULSADOR ON-OFF
+		//Pulsador On-Off
 		if(Chip_GPIO_GetPinState(LPC_GPIO, PULS_ONOFF)==ON)
 		{
 			//APAGAR EQUIPO
@@ -241,37 +242,11 @@ static void vTaskPulsadores(void *pvParameters)
 
 //*********************************************************************************************************************
 
-static void vTaskVentilador(void *pvParameters)
-{
-	uint16_t datoPuerta;
-
-	while(1)
-	{
-		xSemaphoreTake(Semaforo_Ventilador, portMAX_DELAY);
-
-		xQueueReceive(ColaPuerta, &datoPuerta, portMAX_DELAY);
-
-		if(datoPuerta==ON)			//Si la puerta se abrio
-		{
-			Chip_GPIO_SetPinOutLow(LPC_GPIO, VENTILADOR);	//Apago ventilador
-		}
-		else if(datoPuerta==OFF)	//Si la puerta esta cerrada
-		{
-			Chip_GPIO_SetPinOutHigh(LPC_GPIO, VENTILADOR);	//Enciendo ventilador
-		}
-	}
-}
-
-
-//*********************************************************************************************************************
-
 void uC_StartUp (void)
 {
 	Chip_GPIO_Init (LPC_GPIO);
 	Chip_GPIO_SetDir (LPC_GPIO, LED_STICK, OUTPUT);
 	Chip_IOCON_PinMux (LPC_IOCON, LED_STICK, IOCON_MODE_INACT, IOCON_FUNC0);
-	Chip_GPIO_SetDir (LPC_GPIO, BUZZER, OUTPUT);
-	Chip_IOCON_PinMux (LPC_IOCON, BUZZER, IOCON_MODE_INACT, IOCON_FUNC0);
 	Chip_GPIO_SetDir (LPC_GPIO, RGBB, OUTPUT);
 	Chip_IOCON_PinMux (LPC_IOCON, RGBB, IOCON_MODE_INACT, IOCON_FUNC0);
 	Chip_GPIO_SetDir (LPC_GPIO, RGBG, OUTPUT);
@@ -279,6 +254,8 @@ void uC_StartUp (void)
 	Chip_GPIO_SetDir (LPC_GPIO, RGBR, OUTPUT);
 	Chip_IOCON_PinMux (LPC_IOCON, RGBR, IOCON_MODE_INACT, IOCON_FUNC0);
 
+	Chip_GPIO_SetDir (LPC_GPIO, LED, OUTPUT);
+	Chip_IOCON_PinMux (LPC_IOCON, LED, IOCON_MODE_INACT, IOCON_FUNC0);
 	Chip_GPIO_SetDir (LPC_GPIO, MOTOR, OUTPUT);
 	Chip_IOCON_PinMux (LPC_IOCON, MOTOR, IOCON_MODE_INACT, IOCON_FUNC0);
 	Chip_GPIO_SetDir (LPC_GPIO, VENTILADOR, OUTPUT);
@@ -291,7 +268,7 @@ void uC_StartUp (void)
 
 	//Salidas apagadas
 	Chip_GPIO_SetPinOutLow(LPC_GPIO, LED_STICK);
-	Chip_GPIO_SetPinOutHigh(LPC_GPIO, BUZZER);
+	Chip_GPIO_SetPinOutHigh(LPC_GPIO, LED);
 	Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBR);
 	Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBG);
 	Chip_GPIO_SetPinOutLow(LPC_GPIO, RGBB);
@@ -305,7 +282,7 @@ int main(void)
 
 	SystemCoreClockUpdate();
 
-	vSemaphoreCreateBinary(Semaforo_Sonoro);
+	vSemaphoreCreateBinary(Semaforo_Ventilador);
 
 	ColaADCTemp = xQueueCreate (1, sizeof(uint16_t));
 	ColaPuerta = xQueueCreate (1, sizeof(uint16_t));
@@ -323,10 +300,6 @@ int main(void)
 	xTaskCreate(I2C_Config, (char *) "I2C_Config",
 					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 3UL),
 					(xTaskHandle *) NULL);
-
-	xTaskCreate(vTaskVentilador, (char *) "vTaskVentilador",
-				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
-				(xTaskHandle *) NULL);
 
 	xTaskCreate(vTaskPulsadores, (char *) "vTaskPulsadores",
 				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 4UL),

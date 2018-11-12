@@ -24,32 +24,32 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: FRTOS.axf
+all: 2°\ Parciales.axf
 
 dependents:
-	-cd D:/Facultad/Digitales\ II/Repositorio\ MCU/lpc_chip_175x_6x/Debug && $(MAKE) clean all
+	-cd C:/Users/Fede/Documents/MCUXpressoIDE_10.1.1_606/workspace/lpc_chip_175x_6x/Debug && $(MAKE) all
 
 # Tool invocations
-FRTOS.axf: $(OBJS) $(USER_OBJS) D:/Facultad/Digitales\ II/Repositorio\ MCU/lpc_chip_175x_6x/Debug/liblpc_chip_175x_6x.a
+2°\ Parciales.axf: $(OBJS) $(USER_OBJS) C:/Users/Fede/Documents/MCUXpressoIDE_10.1.1_606/workspace/lpc_chip_175x_6x/Debug/liblpc_chip_175x_6x.a
 	@echo 'Building target: $@'
 	@echo 'Invoking: MCU Linker'
-	arm-none-eabi-gcc -nostdlib -L"D:\Facultad\Digitales II\Repositorio MCU\lpc_chip_175x_6x\Debug" -Xlinker -Map="FRTOS.map" -Xlinker --gc-sections -Xlinker -print-memory-usage -mcpu=cortex-m3 -mthumb -T "FRTOS_Debug.ld" -o "FRTOS.axf" $(OBJS) $(USER_OBJS) $(LIBS)
+	arm-none-eabi-gcc -nostdlib -L"C:\Users\Fede\Documents\MCUXpressoIDE_10.1.1_606\workspace\lpc_chip_175x_6x\Debug" -Xlinker -Map="2° Parciales.map" -Xlinker --gc-sections -Xlinker -print-memory-usage -mcpu=cortex-m3 -mthumb -T "FRTOS_Debug.ld" -o "2° Parciales.axf" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 	$(MAKE) --no-print-directory post-build
 
 # Other Targets
 clean:
-	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) FRTOS.axf
+	-$(RM) $(EXECUTABLES)$(OBJS)$(C_DEPS) "2° Parciales.axf"
 	-@echo ' '
 
 post-build:
 	-@echo 'Performing post-build steps'
-	-arm-none-eabi-size "FRTOS.axf"; # arm-none-eabi-objcopy -v -O binary "FRTOS.axf" "FRTOS.bin" ; # checksum -p LPC1769 -d "FRTOS.bin";
+	-arm-none-eabi-size "2° Parciales.axf"; # arm-none-eabi-objcopy -v -O binary "2° Parciales.axf" "2° Parciales.bin" ; # checksum -p LPC1769 -d "2° Parciales.bin";
 	-@echo ' '
 
 .PHONY: all clean dependents
 .SECONDARY: post-build
-D:/Facultad/Digitales\ II/Repositorio\ MCU/lpc_chip_175x_6x/Debug/liblpc_chip_175x_6x.a:
+C:/Users/Fede/Documents/MCUXpressoIDE_10.1.1_606/workspace/lpc_chip_175x_6x/Debug/liblpc_chip_175x_6x.a:
 
 -include ../makefile.targets
