@@ -71,7 +71,7 @@
 //DECLARACIONES
 //*********************************************************************************************************************
 
-SemaphoreHandle_t Semaforo_Ventilador;
+SemaphoreHandle_t Semaforo_General;
 
 QueueHandle_t ColaADCTemp;
 QueueHandle_t ColaPuerta;
@@ -231,10 +231,14 @@ static void vTaskPulsadores(void *pvParameters)
 		if(Chip_GPIO_GetPinState(LPC_GPIO, PULS_ONOFF)==ON)
 		{
 			//APAGAR EQUIPO
+			//Se debe apagar la conversion del ADC
+			//Se debe tomar un semaforo general
 		}
 		else if(Chip_GPIO_GetPinState(LPC_GPIO, PULS_ONOFF)==OFF)
 		{
 			//ENCENDER EQUIPO
+			//Se debe encender la conversion del ADC
+			//Se debe dar un semaforo general
 		}
 	}
 }
@@ -282,12 +286,12 @@ int main(void)
 
 	SystemCoreClockUpdate();
 
-	vSemaphoreCreateBinary(Semaforo_Ventilador);
+	vSemaphoreCreateBinary(Semaforo_General);
 
 	ColaADCTemp = xQueueCreate (1, sizeof(uint16_t));
 	ColaPuerta = xQueueCreate (1, sizeof(uint16_t));
 
-	xSemaphoreTake(Semaforo_Ventilador , portMAX_DELAY );
+	xSemaphoreTake(Semaforo_General, portMAX_DELAY);
 
 	xTaskCreate(taskAnalisis, (char *) "taskAnalisis",
 					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
