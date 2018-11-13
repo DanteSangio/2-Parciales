@@ -66,15 +66,18 @@
 #define LIMITE_INF_TEMP	1638	//1.32V es 1°C que son 1638 cuentas
 #define LIMITE_SUP_TEMP	2730	//2.2V  es 5°C que son 2730 cuentas
 
+#define TICKRATE_SEG1 (5)	// 5 segundos
 
 //*********************************************************************************************************************
 //DECLARACIONES
 //*********************************************************************************************************************
 
 SemaphoreHandle_t Semaforo_General;
+SemaphoreHandle_t Semaforo_5Seg;
 
 QueueHandle_t ColaADCTemp;
 QueueHandle_t ColaPuerta;
+QueueHandle_t ColaEEprom;
 
 static ADC_CLOCK_SETUP_T ADCSetup;
 
@@ -144,13 +147,64 @@ static void I2C_Config(void *pvParameters)
 	vTaskDelete(NULL);
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/* vTaskInicTimer:
+ * Tarea que se encarga de inicializar el TIMER0 y luego se autoelimina
+*/
+static void vTaskInicTimer(void *pvParameters)
+{
+	while (1)
+	{
+
+		/* Enable timer 1 clock */
+		Chip_TIMER_Init(LPC_TIMER0);	//Enciende el modulo
+
+		Chip_TIMER_Reset(LPC_TIMER0);									//Borra la cuenta
+
+		Chip_Clock_SetPCLKDiv(SYSCTL_PCLK_TIMER0, SYSCTL_CLKDIV_8); // hay que poner tambien a 96 MHz el micro en chip
+
+		//MATCH 0: NO RESETEA LA CUENTA
+		Chip_TIMER_MatchEnableInt(LPC_TIMER0, 0);						//Habilita interrupcion del match 0 timer 0
+		Chip_TIMER_SetMatch(LPC_TIMER0, 0, ((SystemCoreClock / 8) * TICKRATE_SEG1));	//Le asigna un valor al match - seteo la frec a la que quiero que el timer me interrumpa (Ej 5seg)
+		Chip_TIMER_ResetOnMatchEnable(LPC_TIMER0, 0);					//Cada vez que llega al match resetea la cuenta
+
+		//Chip_TIMER_Enable(LPC_TIMER0);									//Comienza a contar (hago que se habilite al encender)
+		/* Enable timer interrupt */ 		//El NVIC asigna prioridades de las interrupciones (prioridad de 0 a inf)
+		NVIC_ClearPendingIRQ(TIMER0_IRQn);
+		NVIC_EnableIRQ(TIMER0_IRQn);		//Enciende la interrupcion que acabamos de configurar
+
+		vTaskDelete(NULL);	//Borra la tarea, no necesitaria el while(1)
+	}
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/* TIMER0_IRQHandler:
+ * Controlador del TIMER0
+*/
+void TIMER0_IRQHandler(void)
+{
+	BaseType_t Testigo=pdFALSE;
+
+	if (Chip_TIMER_MatchPending(LPC_TIMER0, 0))
+	{
+		Chip_TIMER_ClearMatch(LPC_TIMER0, 0);				//Resetea match
+
+		xSemaphoreGiveFromISR(Semaforo_5Seg, &Testigo);		//Devuelve si una de las tareas bloqueadas tiene mayor prioridad que la actual
+
+		portYIELD_FROM_ISR(Testigo);						//Si testigo es TRUE -> ejecuta el scheduler
+	}
+}
 
 //*********************************************************************************************************************
-
 static void taskAnalisis(void *pvParameters)
 {
 	uint16_t datoTemp, datoPuerta;
-	unsigned char Datos_Tx [] = { (W_ADDRESS & 0xFF00) >> 8 , W_ADDRESS & 0x00FF, DATO};
+	unsigned char Datos_Tx [] = { (W_ADDRESS & 0xFF00) >> 8 , W_ADDRESS & 0x00FF} ,Datos_Rx[4] ,aux = 0;
+	uint32_t puerta;
+
+    Chip_I2C_MasterSend (I2C1, SLAVE_ADDRESS, Datos_Tx, 2); // Nos posicionamos en la Posicion a leer.
+    Chip_I2C_MasterRead (I2C1, SLAVE_ADDRESS, Datos_Rx, 4); // Se leen 04 bytes a partir de la Posición.
+    puerta = (Datos_Rx[0] << 24) + (Datos_Rx[1] << 16) + (Datos_Rx[2] << 8) + Datos_Rx[3] ; // leo por primera vez
 
 	while(1)
 	{
@@ -182,6 +236,18 @@ static void taskAnalisis(void *pvParameters)
 			Chip_GPIO_SetPinOutLow(LPC_GPIO, VENTILADOR);	//Apago el ventilador
 		}
 
+		if(datoPuerta==ON)			//Si la puerta esta abierta
+		{
+			aux = 1;
+		}
+		if(datoPuerta==OFF && aux == 1)	//Si la puerta esta cerrada
+		{
+			aux	= 0;
+			puerta++;// significa que abrio y cerro la puerta
+			xQueueOverwrite(ColaEEprom,&puerta); // actualizo el valor en la cola
+		}
+
+
 		/*
 		if(datoTemp[i] > LIMITE_MAX_TEMP)
 		{
@@ -200,6 +266,26 @@ static void taskAnalisis(void *pvParameters)
 		Chip_ADC_SetStartMode (LPC_ADC, ADC_START_NOW, ADC_TRIGGERMODE_RISING);
 		vTaskDelay( 950 / portTICK_PERIOD_MS );//Delay de 950 mseg
 	}
+	vTaskDelete(NULL);	//Borra la tarea
+}
+//*********************************************************************************************************************
+static void vTaskEEprom(void *pvParameters)
+{
+	uint16_t datoEEprom;
+	unsigned char Datos_Tx [] = { (W_ADDRESS & 0xFF00) >> 8 , W_ADDRESS & 0x00FF, DATO};
+
+	while(1)
+	{
+		xSemaphoreTake(Semaforo_5Seg, portMAX_DELAY);
+		xQueueReceive(ColaEEprom, &datoEEprom, portMAX_DELAY);//recibo el dato y lo hago en caracteres de 1 byte
+		Datos_Tx[2] = (datoEEprom & 0xFF000000) >> 24;
+		Datos_Tx[3] = (datoEEprom & 0x00FF0000) >> 16;
+		Datos_Tx[4] = (datoEEprom & 0x0000FF00) >> 8;
+		Datos_Tx[5] = (datoEEprom & 0x000000FF) >> 0;
+
+		Chip_I2C_MasterSend (I2C1, SLAVE_ADDRESS, Datos_Tx,6); //Selecciono el lugar y escribo el dato.
+	}
+	vTaskDelete(NULL);	//Borra la tarea
 }
 
 
@@ -233,6 +319,7 @@ static void vTaskPulsadores(void *pvParameters)
 			//APAGAR EQUIPO
 			//Se debe apagar la conversion del ADC
 			//Se debe tomar un semaforo general
+			//Guardar los datos en EEPROM dando semaforo 5Seg
 		}
 		else if(Chip_GPIO_GetPinState(LPC_GPIO, PULS_ONOFF)==OFF)
 		{
@@ -241,6 +328,8 @@ static void vTaskPulsadores(void *pvParameters)
 			//Se debe dar un semaforo general
 		}
 	}
+	vTaskDelete(NULL);	//Borra la tarea
+
 }
 
 
@@ -287,11 +376,14 @@ int main(void)
 	SystemCoreClockUpdate();
 
 	vSemaphoreCreateBinary(Semaforo_General);
+	vSemaphoreCreateBinary(Semaforo_5Seg);
 
 	ColaADCTemp = xQueueCreate (1, sizeof(uint16_t));
 	ColaPuerta = xQueueCreate (1, sizeof(uint16_t));
+	ColaEEprom = xQueueCreate (1, sizeof(uint32_t));
 
 	xSemaphoreTake(Semaforo_General, portMAX_DELAY);
+	xSemaphoreTake(Semaforo_5Seg, portMAX_DELAY);
 
 	xTaskCreate(taskAnalisis, (char *) "taskAnalisis",
 					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
@@ -305,8 +397,16 @@ int main(void)
 					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 3UL),
 					(xTaskHandle *) NULL);
 
+	xTaskCreate(vTaskInicTimer, (char *) "vTaskInicTimer",
+					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 3UL),
+					(xTaskHandle *) NULL);
+
 	xTaskCreate(vTaskPulsadores, (char *) "vTaskPulsadores",
-				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 4UL),
+				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
+				(xTaskHandle *) NULL);
+
+	xTaskCreate(vTaskEEprom, (char *) "vTaskEEprom",
+				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
 				(xTaskHandle *) NULL);
 
 
