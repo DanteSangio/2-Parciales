@@ -62,18 +62,20 @@
 	10°C -> 3.3V
 
 	3.3V / 15 = 0.22V
+
+	N = (2^n -1).Vi/Vo
 */
 #define LIMITE_INF_TEMP	1638	//1.32V es 1°C que son 1638 cuentas
 #define LIMITE_SUP_TEMP	2730	//2.2V  es 5°C que son 2730 cuentas
 
-#define TICKRATE_SEG1 (5)	// 5 segundos
+#define TICKRATE_SEG1 (300)		//60x5 = 300 segundos = 5 minutos
 
 //*********************************************************************************************************************
 //DECLARACIONES
 //*********************************************************************************************************************
 
 SemaphoreHandle_t Semaforo_General;
-SemaphoreHandle_t Semaforo_5Seg;
+SemaphoreHandle_t Semaforo_5Min;
 
 QueueHandle_t ColaADCTemp;
 QueueHandle_t ColaPuerta;
@@ -166,7 +168,7 @@ static void vTaskInicTimer(void *pvParameters)
 
 		//MATCH 0: NO RESETEA LA CUENTA
 		Chip_TIMER_MatchEnableInt(LPC_TIMER0, 0);						//Habilita interrupcion del match 0 timer 0
-		Chip_TIMER_SetMatch(LPC_TIMER0, 0, ((SystemCoreClock / 8) * TICKRATE_SEG1));	//Le asigna un valor al match - seteo la frec a la que quiero que el timer me interrumpa (Ej 5seg)
+		Chip_TIMER_SetMatch(LPC_TIMER0, 0, ((SystemCoreClock / 8) * TICKRATE_SEG1));	//Le asigna un valor al match - seteo la frec a la que quiero que el timer me interrumpa (Ej 5min)
 		Chip_TIMER_ResetOnMatchEnable(LPC_TIMER0, 0);					//Cada vez que llega al match resetea la cuenta
 
 		//Chip_TIMER_Enable(LPC_TIMER0);									//Comienza a contar (hago que se habilite al encender)
@@ -189,7 +191,7 @@ void TIMER0_IRQHandler(void)
 	{
 		Chip_TIMER_ClearMatch(LPC_TIMER0, 0);				//Resetea match
 
-		xSemaphoreGiveFromISR(Semaforo_5Seg, &Testigo);		//Devuelve si una de las tareas bloqueadas tiene mayor prioridad que la actual
+		xSemaphoreGiveFromISR(Semaforo_5Min, &Testigo);		//Devuelve si una de las tareas bloqueadas tiene mayor prioridad que la actual
 
 		portYIELD_FROM_ISR(Testigo);						//Si testigo es TRUE -> ejecuta el scheduler
 	}
@@ -276,7 +278,7 @@ static void vTaskEEprom(void *pvParameters)
 
 	while(1)
 	{
-		xSemaphoreTake(Semaforo_5Seg, portMAX_DELAY);
+		xSemaphoreTake(Semaforo_5Min, portMAX_DELAY);
 		xQueueReceive(ColaEEprom, &datoEEprom, portMAX_DELAY);//recibo el dato y lo hago en caracteres de 1 byte
 		Datos_Tx[2] = (datoEEprom & 0xFF000000) >> 24;
 		Datos_Tx[3] = (datoEEprom & 0x00FF0000) >> 16;
@@ -376,14 +378,14 @@ int main(void)
 	SystemCoreClockUpdate();
 
 	vSemaphoreCreateBinary(Semaforo_General);
-	vSemaphoreCreateBinary(Semaforo_5Seg);
+	vSemaphoreCreateBinary(Semaforo_5Min);
 
 	ColaADCTemp = xQueueCreate (1, sizeof(uint16_t));
 	ColaPuerta = xQueueCreate (1, sizeof(uint16_t));
 	ColaEEprom = xQueueCreate (1, sizeof(uint32_t));
 
 	xSemaphoreTake(Semaforo_General, portMAX_DELAY);
-	xSemaphoreTake(Semaforo_5Seg, portMAX_DELAY);
+	xSemaphoreTake(Semaforo_5Min, portMAX_DELAY);
 
 	xTaskCreate(taskAnalisis, (char *) "taskAnalisis",
 					configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
